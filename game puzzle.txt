@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Block Puzzle</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0a0a0a;
+            color: white;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            touch-action: none;
+        }
+        .grid-cell {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+        .block-neon {
+            box-shadow: 0 0 15px currentColor;
+            transition: transform 0.1s ease;
+        }
+        .glow-text {
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.7);
+        }
+        #game-container {
+            max-width: 400px;
+            margin: auto;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center h-screen">
+
+    <div id="game-container" class="w-full px-4">
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h1 class="text-2xl font-bold text-cyan-400 glow-text">NEON BLOCK</h1>
+                <p class="text-xs text-gray-500 tracking-widest">PUZZLE ADDICT</p>
+            </div>
+            <div class="text-right">
+                <p class="text-gray-400 text-sm">Skor</p>
+                <p id="score" class="text-3xl font-mono font-bold text-purple-400">0</p>
+            </div>
+        </div>
+
+        <div id="grid" class="grid grid-cols-8 gap-1 p-2 bg-neutral-900 rounded-xl border border-neutral-800 shadow-2xl mb-8">
+            </div>
+
+        <div id="block-slots" class="flex justify-around items-center h-32 bg-neutral-900/50 rounded-xl border border-dashed border-neutral-700">
+            </div>
+    </div>
+
+    <div id="game-over" class="hidden fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50">
+        <h2 class="text-5xl font-black text-red-500 mb-2">GAME OVER</h2>
+        <p class="text-xl mb-8">Skor Akhir: <span id="final-score" class="font-bold text-cyan-400">0</span></p>
+        <button onclick="location.reload()" class="px-8 py-3 bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded-full transition-all transform hover:scale-110">
+            MAIN LAGI
+        </button>
+    </div>
+
+    <script>
+        const GRID_SIZE = 8;
+        let score = 0;
+        const gridElement = document.getElementById('grid');
+        const scoreElement = document.getElementById('score');
+        const slotsElement = document.getElementById('block-slots');
+        
+        // State Grid (0 = kosong, string = warna blok)
+        let gameState = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(0));
+
+        // Inisialisasi Grid UI
+        function initGrid() {
+            gridElement.innerHTML = '';
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell aspect-square';
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
+                    gridElement.appendChild(cell);
+                }
+            }
+        }
+
+        // Definisi Bentuk Blok (Modern Shapes)
+        const SHAPES = [
+            { shape: [[1,1], [1,1]], color: 'bg-blue-500 text-blue-500' }, // Kotak
+            { shape: [[1,1,1,1]], color: 'bg-cyan-400 text-cyan-400' },    // Garis
+            { shape: [[1,1,1], [0,1,0]], color: 'bg-purple-500 text-purple-500' }, // T
+            { shape: [[1,1,0], [0,1,1]], color: 'bg-green-400 text-green-400' },   // Z
+            { shape: [[1,0], [1,0], [1,1]], color: 'bg-orange-400 text-orange-400' } // L
+        ];
+
+        function generateNewBlocks() {
+            slotsElement.innerHTML = '';
+            for (let i = 0; i < 3; i++) {
+                const randomShape = SHAPES[Math.floor(Math.random() * SHAPES.length)];
+                createDraggableBlock(randomShape, i);
+            }
+        }
+
+        function createDraggableBlock(data, index) {
+            const container = document.createElement('div');
+            container.className = 'cursor-grab active:cursor-grabbing p-2 transition-transform hover:scale-110';
+            container.draggable = true;
+
+            const gridWrap = document.createElement('div');
+            gridWrap.style.display = 'grid';
+            gridWrap.style.gridTemplateColumns = `repeat(${data.shape[0].length}, 20px)`;
+            gridWrap.style.gap = '2px';
+
+            data.shape.forEach(row => {
+                row.forEach(cell => {
+                    const div = document.createElement('div');
+                    div.className = cell ? `w-5 h-5 rounded-sm block-neon ${data.color}` : 'w-5 h-5';
+                    gridWrap.appendChild(div);
+                });
+            });
+
+            container.appendChild(gridWrap);
+            
+            // Logika drag and drop sederhana (Bisa dikembangkan ke Touch API untuk Mobile)
+            container.ondragstart = (e) => {
+                e.dataTransfer.setData('blockData', JSON.stringify(data));
+                container.style.opacity = '0.4';
+            };
+            container.ondragend = () => container.style.opacity = '1';
+            
+            slotsElement.appendChild(container);
+        }
+
+        // Logika Drop & Hapus Baris
+        gridElement.ondragover = (e) => e.preventDefault();
+        gridElement.ondrop = (e) => {
+            e.preventDefault();
+            const data = JSON.parse(e.dataTransfer.getData('blockData'));
+            const target = e.target.closest('.grid-cell');
+            
+            if (target) {
+                const r = parseInt(target.dataset.r);
+                const c = parseInt(target.dataset.c);
+                
+                if (canPlace(data.shape, r, c)) {
+                    placeBlock(data.shape, r, c, data.color);
+                    checkLines();
+                    // Logika hapus blok dari slot bisa ditambahkan di sini
+                    e.target.style.opacity = '1';
+                }
+            }
+        };
+
+        function canPlace(shape, row, col) {
+            for (let r = 0; r < shape.length; r++) {
+                for (let c = 0; c < shape[r].length; c++) {
+                    if (shape[r][c]) {
+                        if (row + r >= GRID_SIZE || col + c >= GRID_SIZE || gameState[row + r][col + c] !== 0) {
+                            return false;
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+
+        function placeBlock(shape, row, col, color) {
+            for (let r = 0; r < shape.length; r++) {
+                for (let c = 0; c < shape[r].length; c++) {
+                    if (shape[r][c]) {
+                        gameState[row + r][col + c] = color;
+                        const cell = document.querySelector(`[data-r="${row + r}"][data-c="${col + c}"]`);
+                        cell.className = `grid-cell aspect-square block-neon ${color}`;
+                    }
+                }
+            }
+            score += 10;
+            scoreElement.innerText = score;
+        }
+
+        function checkLines() {
+            // Logika deteksi baris/kolom penuh dan animasi hapus
+            // (Untuk kesederhanaan, implementasi dasar)
+        }
+
+        // Jalankan Game
+        initGrid();
+        generateNewBlocks();
+
+    </script>
+</body>
+</html>
